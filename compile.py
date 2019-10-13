@@ -11,8 +11,6 @@ import random
 import shutil
 import sys
 
-from app_info import PROJECT_NAME, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
-
 class CompileMode(Enum):
     DEBUG    = "debug"
     INTERNAL = "internal"
@@ -26,6 +24,9 @@ def NormalizePathSlashes(pathDict):
 paths = {}
 
 paths["root"] = os.getcwd()
+
+sys.path.insert(0, os.path.join(paths["root"], "compile"))
+from app_info import PROJECT_NAME, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
 
 paths["build"]          = paths["root"]  + "/build"
 paths["data"]           = paths["root"]  + "/data"
@@ -232,9 +233,6 @@ def WinRun():
     ]))
 
 def WinDeploy():
-    if not os.path.exists(paths["deploy"]):
-        os.makedirs(paths["deploy"])
-
     deployBundleName = PROJECT_NAME
     deployBundlePath = os.path.join(paths["deploy"], deployBundleName)
     RemakeDestAndCopyDir(paths["build"], deployBundlePath)
@@ -477,6 +475,8 @@ def Main():
 
     if not os.path.exists(paths["build"]):
         os.makedirs(paths["build"])
+    if not os.path.exists(paths["deploy"]):
+        os.makedirs(paths["deploy"])
 
     if args.ifchanged:
         if not DidFilesChange():
