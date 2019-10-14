@@ -54,23 +54,11 @@ for name, path in PATHS.items():
 NormalizePathSlashes(paths)
 
 includeDirs = {}
-libCompiledBaseDirs = {}
-libCompiledNames = {
-    "debug": [],
-    "release": []
-}
-for name, libInfo in LIBS_EXTERNAL.items():
-    libPath = paths["libs-external"] + "/" + libInfo["path"]
-    includeDirs[name] = libPath
-    if libInfo["includeDir"]:
-        includeDirs[name] += "/include"
-    if libInfo["compiled"]:
-        libCompiledBaseDirs[name] = libPath
-        libCompiledNames["debug"].append(libInfo["compiledName"]["debug"])
-        libCompiledNames["release"].append(libInfo["compiledName"]["release"])
+for lib in LIBS_EXTERNAL:
+    libPath = paths["libs-external"] + "/" + lib.path
+    includeDirs[lib.name] = libPath + "/include"
 
 NormalizePathSlashes(includeDirs)
-NormalizePathSlashes(libCompiledBaseDirs)
 
 def RemakeDestAndCopyDir(srcPath, dstPath):
     # Re-create (clear) the directory
@@ -162,15 +150,6 @@ def WinCompile(compileMode, debugger):
     ])
 
     libPaths = ""
-    if compileMode == CompileMode.DEBUG:
-        libPath = "/win32/debug"
-    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
-        libPath = "/win32/release"
-    else:
-        raise Exception("Unknown compile mode {}".format(compileMode))
-    libPaths = " ".join([
-        libPaths
-    ] + [ "/LIBPATH:" + baseDir + libPath for baseDir in libCompiledBaseDirs.values() ])
 
     libs = " ".join([
         "user32.lib",
@@ -179,16 +158,20 @@ def WinCompile(compileMode, debugger):
         "ole32.lib",
         "winmm.lib"
     ])
+
+    indStr = ""
     if compileMode == CompileMode.DEBUG:
-        libs = " ".join([
-            libs
-        ] + [ libName for libName in libCompiledNames["debug"] ])
+        indStr = "debug"
     elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
-        libs = " ".join([
-            libs
-        ] + [ libName for libName in libCompiledNames["release"] ])
+        indStr = "release"
     else:
+        # TODO shouldn't have to check this everywhere
         raise Exception("Unknown compile mode {}".format(compileMode))
+
+    for lib in LIBS_EXTERNAL:
+        if lib.compiledNames is not None:
+            libPaths += " /LIBPATH:" + os.path.join(paths["libs-external"], lib.path, "win32", indStr)
+            libs += " " + lib.compiledNames[indStr]
 
     # Clear old PDB files
     for fileName in os.listdir(paths["build"]):
@@ -224,6 +207,12 @@ def WinCompile(compileMode, debugger):
         devenvCommand,
         "popd"
     ]))
+
+    for lib in LIBS_EXTERNAL:
+        if lib.dllNames is not None:
+            dllPathSrc = os.path.join(paths["libs-external"], lib.path, "win32", indStr, lib.dllNames[indStr])
+            dllPathDst = os.path.join(paths["build"], lib.dllNames[indStr])
+            shutil.copyfile(dllPathSrc, dllPathDst)
 
 def WinRun():
     os.system(" & ".join([
