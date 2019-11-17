@@ -77,10 +77,13 @@ def RemakeDestAndCopyDir(srcPath, dstPath):
 def ClearDirContents(path):
     for fileName in os.listdir(path):
         filePath = os.path.join(path, fileName)
-        if os.path.isfile(filePath):
-            os.remove(filePath)
-        elif os.path.isdir(filePath):
-            shutil.rmtree(filePath)
+        try:
+            if os.path.isfile(filePath):
+                os.remove(filePath)
+            elif os.path.isdir(filePath):
+                shutil.rmtree(filePath)
+        except Exception as e:
+            print("Failed to clean {}: {}".format(filePath, str(e)))
 
 def WinCompile(compileMode, debugger):
     macros = " ".join([
@@ -139,6 +142,12 @@ def WinCompile(compileMode, debugger):
         "/wd4201",  # nonstandard extension used: nameless struct/union
         "/wd4505",  # unreferenced local function has been removed
     ])
+    if compileMode == CompileMode.DEBUG:
+        compilerWarningFlags = " ".join([
+            compilerWarningFlags,
+            "/wd4189", # local variable is initialized but not referenced
+            "/wd4702", # unreachable code (early return for debugging)
+        ])
 
     includePaths = " ".join([
         "/I" + paths["src"],
