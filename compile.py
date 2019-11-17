@@ -107,11 +107,12 @@ def WinCompile(compileMode, debugger):
         ])
 
     compilerFlags = " ".join([
-        "/nologo",  # disable the "Microsoft C/C++ Optimizing Compiler" message
-        "/Gm-",     # disable incremental build things
-        "/GR-",     # disable type information
-        "/EHa-",    # disable exception handling
-        "/EHsc"     # handle stdlib errors
+        "/nologo",       # disable the "Microsoft C/C++ Optimizing Compiler" message
+        "/Gm-",          # disable incremental build things
+        "/GR-",          # disable type information
+        "/EHa-",         # disable exception handling
+        "/EHsc",         # handle stdlib errors
+        "/std:c++latest" # use latest C++ standard (aggregate initialization...)
     ])
     if compileMode == CompileMode.DEBUG:
         compilerFlags = " ".join([
