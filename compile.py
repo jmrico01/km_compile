@@ -140,6 +140,7 @@ def WinCompile(compileMode, debugger):
         # disable the following warnings:
         "/wd4100",  # unused function arguments
         "/wd4201",  # nonstandard extension used: nameless struct/union
+        "/wd4458",  # declaration of X hides class member
         "/wd4505",  # unreferenced local function has been removed
     ])
     if compileMode == CompileMode.DEBUG:
