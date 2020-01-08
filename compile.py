@@ -143,6 +143,13 @@ def WinCompile(compileMode, debugger):
         "/wd4458",  # declaration of X hides class member
         "/wd4505",  # unreferenced local function has been removed
     ])
+    # TODO hmm... is this a Hack
+    if PROJECT_NAME == "nopasanada":
+        compilerWarningFlags = " ".join([
+            compilerWarningFlags,
+            "/wd4267", # conversion from X to Y, possible loss of data
+            "/wd4456", # declaration of X hides previous local declaration
+        ])
     if compileMode == CompileMode.DEBUG:
         compilerWarningFlags = " ".join([
             compilerWarningFlags,
