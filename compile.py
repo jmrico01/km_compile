@@ -496,9 +496,9 @@ def Main():
         Run()
     elif args.mode in compileModeDict:
         ComputeSrcHashes()
-        for copyDir in COPY_DIRS:
-            dirSrcPath = NormalizePathSlashes(paths["root"] + copyDir)
-            dirDstPath = NormalizePathSlashes(paths["build"] + copyDir)
+        for srcDir, dstDir in COPY_DIRS.items():
+            dirSrcPath = NormalizePathSlashes(paths["root"] + srcDir)
+            dirDstPath = NormalizePathSlashes(paths["build"] + dstDir)
             RemakeDestAndCopyDir(dirSrcPath, dirDstPath)
         if not os.path.exists(paths["build-logs"]):
             os.makedirs(paths["build-logs"])
