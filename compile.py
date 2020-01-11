@@ -16,9 +16,8 @@ class CompileMode(Enum):
     INTERNAL = "internal"
     RELEASE  = "release"
 
-def NormalizePathSlashes(pathDict):
-    for name in pathDict:
-        pathDict[name] = pathDict[name].replace("/", os.sep)
+def NormalizePathSlashes(path):
+    return path.replace("/", os.sep)
 
 # Important directory & file paths
 paths = {}
@@ -26,7 +25,7 @@ paths = {}
 paths["root"] = os.getcwd()
 
 sys.path.insert(0, os.path.join(paths["root"], "compile"))
-from app_info import PROJECT_NAME, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
+from app_info import PROJECT_NAME, COPY_DIRS, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
 
 paths["build"]          = paths["root"]  + "/build"
 paths["data"]           = paths["root"]  + "/data"
@@ -35,10 +34,7 @@ paths["libs-external"]  = paths["root"]  + "/libs/external"
 paths["libs-internal"]  = paths["root"]  + "/libs/internal"
 paths["src"]            = paths["root"]  + "/src"
 
-paths["build-data"]     = paths["build"] + "/data"
 paths["build-logs"]     = paths["build"] + "/logs"
-paths["build-shaders"]  = paths["build"] + "/shaders"
-paths["src-shaders"]    = paths["src"]   + "/shaders"
 
 # Main source file
 paths["main-cpp"]       = paths["src"]   + "/main.cpp"
@@ -51,14 +47,16 @@ paths["src-hashes-old"] = paths["build"] + "/src_hashes_old"
 for name, path in PATHS.items():
     paths[name] = path
 
-NormalizePathSlashes(paths)
+for name in paths:
+    paths[name] = NormalizePathSlashes(paths[name])
 
 includeDirs = {}
 for lib in LIBS_EXTERNAL:
     libPath = paths["libs-external"] + "/" + lib.path
     includeDirs[lib.name] = libPath + "/include"
 
-NormalizePathSlashes(includeDirs)
+for name in includeDirs:
+    includeDirs[name] = NormalizePathSlashes(includeDirs[name])
 
 def RemakeDestAndCopyDir(srcPath, dstPath):
     # Re-create (clear) the directory
@@ -498,8 +496,10 @@ def Main():
         Run()
     elif args.mode in compileModeDict:
         ComputeSrcHashes()
-        RemakeDestAndCopyDir(paths["data"], paths["build-data"])
-        RemakeDestAndCopyDir(paths["src-shaders"], paths["build-shaders"])
+        for copyDir in COPY_DIRS:
+            dirSrcPath = NormalizePathSlashes(paths["root"] + copyDir)
+            dirDstPath = NormalizePathSlashes(paths["build"] + copyDir)
+            RemakeDestAndCopyDir(dirSrcPath, dirDstPath)
         if not os.path.exists(paths["build-logs"]):
             os.makedirs(paths["build-logs"])
 
