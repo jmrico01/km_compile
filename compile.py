@@ -259,10 +259,10 @@ def LinuxCompile(compileMode):
         "-DGAME_LINUX"
     ])
     compilerFlags = " ".join([
-        "-std=c++11",       # use C++11 standard
-        "-ggdb3",           # generate level 3 (max) GDB debug info.
-        "-fno-rtti",        # disable run-time type info
-        "-fno-exceptions"   # disable C++ exceptions (ew)
+        "-std=c++17",     # use C++17 standard
+        "-ggdb3",         # generate level 3 (max) GDB debug info.
+        "-fno-rtti",      # disable run-time type info
+        "-fno-exceptions" # disable C++ exceptions (ew)
     ])
     compilerWarningFlags = " ".join([
         "-Werror",  # treat warnings as errors
@@ -272,49 +272,50 @@ def LinuxCompile(compileMode):
         "-Wno-char-subscripts" # using char as an array subscript
     ])
     includePaths = " ".join([
-        "-I" + paths["include-freetype-linux"]
-    ])
+        "-I" + paths["src"],
+        "-I" + paths["libs-internal"]
+    ] + [ "-I" + path for path in includeDirs.values() ])
 
     linkerFlags = " ".join([
         "-fvisibility=hidden"
     ])
-    libPathsPlatform = " ".join([
-    ])
-    libsPlatform = " ".join([
+
+
+    libPaths = ""
+
+    libs = " ".join([
         "-lm",      # math
-        "-ldl",     # dynamic linking loader
+        #"-ldl",     # dynamic linking loader
         "-lGL",     # OpenGL
         "-lX11",    # X11
         "-lasound", # ALSA lib
         "-lpthread"
     ])
-    libPathsGame = " ".join([
-        "-L" + paths["lib-freetype-linux"]
-    ])
-    libsGame = " ".join([
-        "-lfreetype"
-    ])
 
-    #pdbName = PROJECT_NAME + "_game" + str(random.randrange(99999)) + ".pdb"
-    compileLibCommand = " ".join([
-        "gcc",
-        macros, compilerFlags, compilerWarningFlags, includePaths,
-        "-shared", "-fPIC", paths["main-cpp"],
-        "-o " + PROJECT_NAME + "_game.so",
-        linkerFlags, "-static", libPathsGame, libsGame
-    ])
+    indStr = ""
+    if compileMode == CompileMode.DEBUG:
+        indStr = "debug"
+    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
+        indStr = "release"
+    else:
+        # TODO shouldn't have to check this everywhere
+        raise Exception("Unknown compile mode {}".format(compileMode))
+
+    for lib in LIBS_EXTERNAL:
+        if lib.compiledNames is not None:
+            libPaths += " /LIBPATH:" + os.path.join(paths["libs-external"], lib.path, "win32", indStr)
+            libs += " " + lib.compiledNames[indStr]
 
     compileCommand = " ".join([
-        "gcc", "-DGAME_PLATFORM_CODE",
+        "g++",
         macros, compilerFlags, compilerWarningFlags, includePaths,
-        paths["linux-main-cpp"],
+        paths["main-cpp"],
         "-o " + PROJECT_NAME + "_linux",
-        linkerFlags, libPathsPlatform, libsPlatform
+        linkerFlags, libPaths, libs
     ])
 
     os.system("bash -c \"" + " ; ".join([
         "pushd " + paths["build"] + " > /dev/null",
-        compileLibCommand,
         compileCommand,
         "popd > /dev/null"
     ]) + "\"")
