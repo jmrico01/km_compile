@@ -254,9 +254,9 @@ def WinDeploy():
 
 def LinuxCompile(compileMode):
     macros = " ".join([
+        "-DGAME_LINUX=1",
         "-DGAME_INTERNAL=1",
-        "-DGAME_SLOW=1",
-        "-DGAME_LINUX"
+        "-DGAME_SLOW=1"
     ])
     compilerFlags = " ".join([
         "-std=c++17",     # use C++17 standard
@@ -285,11 +285,7 @@ def LinuxCompile(compileMode):
     libPaths = ""
 
     libs = " ".join([
-        "-lm",      # math
-        #"-ldl",     # dynamic linking loader
-        "-lGL",     # OpenGL
-        "-lX11",    # X11
-        "-lasound", # ALSA lib
+        "-lm",
         "-lpthread"
     ])
 
