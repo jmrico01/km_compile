@@ -288,6 +288,12 @@ def LinuxCompile(compileMode):
         "-lm",
         "-lpthread"
     ])
+    # TODO hmmm... is this hack #2
+    if PROJECT_NAME == "nopasanada":
+        libs = " ".join([
+            libs,
+            ""
+        ])
 
     indStr = ""
     if compileMode == CompileMode.DEBUG:
@@ -304,7 +310,7 @@ def LinuxCompile(compileMode):
             libs += " " + lib.compiledNames[indStr]
 
     compileCommand = " ".join([
-        "g++",
+        "g++-9",
         macros, compilerFlags, compilerWarningFlags, includePaths,
         paths["main-cpp"],
         "-o " + PROJECT_NAME + "_linux",
