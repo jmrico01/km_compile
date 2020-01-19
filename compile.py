@@ -292,7 +292,9 @@ def LinuxCompile(compileMode):
     if PROJECT_NAME == "nopasanada":
         libs = " ".join([
             libs,
-            ""
+            "-lz",
+            "-lssl",
+            "-lcrypto"
         ])
 
     indStr = ""
