@@ -259,6 +259,7 @@ def LinuxCompile(compileMode):
         "-DGAME_INTERNAL=1",
         "-DGAME_SLOW=1"
     ])
+    macros = macros + " " + " ".join(["-D" + define for define in DEFINES])
     compilerFlags = " ".join([
         "-std=c++17",     # use C++17 standard
         "-ggdb3",         # generate level 3 (max) GDB debug info.
