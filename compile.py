@@ -25,7 +25,7 @@ paths = {}
 paths["root"] = os.getcwd()
 
 sys.path.insert(0, os.path.join(paths["root"], "compile"))
-from app_info import PROJECT_NAME, COPY_DIRS, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
+from app_info import PROJECT_NAME, COPY_DIRS, DEFINES, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
 
 paths["build"]          = paths["root"]  + "/build"
 paths["data"]           = paths["root"]  + "/data"
@@ -88,6 +88,7 @@ def WinCompile(compileMode, debugger):
         "/DGAME_WIN32=1",
         "/D_CRT_SECURE_NO_WARNINGS"
     ])
+    macros = macros + " " + " ".join(["/D" + define for define in DEFINES])
     if compileMode == CompileMode.DEBUG:
         macros = " ".join([
             macros,
