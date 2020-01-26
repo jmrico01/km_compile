@@ -173,7 +173,8 @@ def WinCompile(compileMode, debugger):
         "gdi32.lib",
         "opengl32.lib",
         "ole32.lib",
-        "winmm.lib"
+        "winmm.lib",
+        "shell32.lib"
     ])
 
     indStr = ""
