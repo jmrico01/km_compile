@@ -267,6 +267,16 @@ def LinuxCompile(compileMode):
         "-fno-rtti",      # disable run-time type info
         "-fno-exceptions" # disable C++ exceptions (ew)
     ])
+    if compileMode == CompileMode.DEBUG:
+        compilerFlags = " ".join([
+            compilerFlags,
+            "-O0", # no optimization
+        ])
+    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
+        compilerFlags = " ".join([
+            compilerFlags,
+            "-O3", # level 3 optimizations
+        ])
     compilerWarningFlags = " ".join([
         "-Werror",  # treat warnings as errors
         "-Wall",    # enable all warnings
