@@ -25,7 +25,7 @@ paths = {}
 paths["root"] = os.getcwd()
 
 sys.path.insert(0, os.path.join(paths["root"], "compile"))
-from app_info import PROJECT_NAME, COPY_DIRS, DEFINES, DEPLOY_FILES, LIBS_EXTERNAL, PATHS
+from app_info import PROJECT_NAME, COPY_DIRS, DEFINES, DEPLOY_FILES, LIBS_EXTERNAL, PATHS, USE_KM_PLATFORM
 
 paths["build"]          = paths["root"]  + "/build"
 paths["data"]           = paths["root"]  + "/data"
@@ -38,6 +38,7 @@ paths["build-logs"]     = paths["build"] + "/logs"
 
 # Main source file
 paths["main-cpp"]       = paths["src"]   + "/main.cpp"
+paths["win32-main-cpp"] = paths["libs-internal"] + "/km_platform/win32_main.cpp"
 
 # Source hashes for if-changed compilation
 paths["src-hashes"]     = paths["build"] + "/src_hashes"
