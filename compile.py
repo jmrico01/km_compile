@@ -73,7 +73,10 @@ def remake_dest_and_copy_dir(src_path, dst_path):
         elif os.path.isdir(file_path):
             shutil.copytree(file_path, os.path.join(dst_path, file_name))
 
-def clear_dir(path):
+def make_and_clear_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
     for file_name in os.listdir(path):
         file_path = os.path.join(path, file_name)
         try:
@@ -475,8 +478,8 @@ def DidFilesChange():
     return False
 
 def Clean():
-    clear_dir(paths["build"])
-    clear_dir(paths["deploy"])
+    make_and_clear_dir(paths["build"])
+    make_and_clear_dir(paths["deploy"])
 
 def Run():
     platformName = platform.system()
