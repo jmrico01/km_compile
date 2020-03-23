@@ -25,7 +25,7 @@ paths = {}
 paths["root"] = os.getcwd()
 
 sys.path.insert(0, os.path.join(paths["root"], "compile"))
-from app_info import PROJECT_NAME, COPY_DIRS, DEFINES, DEPLOY_FILES, LIBS_EXTERNAL, PATHS, USE_KM_PLATFORM
+from app_info import PROJECT_NAME, COPY_DIRS, DEFINES, DEPLOY_FILES, LIBS_EXTERNAL, PATHS, USE_KM_PLATFORM, post_compile_custom
 
 paths["build"]          = paths["root"]  + "/build"
 paths["data"]           = paths["root"]  + "/data"
@@ -59,30 +59,30 @@ for lib in LIBS_EXTERNAL:
 for name in includeDirs:
     includeDirs[name] = NormalizePathSlashes(includeDirs[name])
 
-def RemakeDestAndCopyDir(srcPath, dstPath):
+def remake_dest_and_copy_dir(src_path, dst_path):
     # Re-create (clear) the directory
-    if os.path.exists(dstPath):
-        shutil.rmtree(dstPath)
-    os.makedirs(dstPath)
+    if os.path.exists(dst_path):
+        shutil.rmtree(dst_path)
+    os.makedirs(dst_path)
 
     # Copy
-    for fileName in os.listdir(srcPath):
-        filePath = os.path.join(srcPath, fileName)
-        if os.path.isfile(filePath):
-            shutil.copy2(filePath, dstPath)
-        elif os.path.isdir(filePath):
-            shutil.copytree(filePath, os.path.join(dstPath, fileName))
+    for file_name in os.listdir(src_path):
+        file_path = os.path.join(src_path, file_name)
+        if os.path.isfile(file_path):
+            shutil.copy2(file_path, dst_path)
+        elif os.path.isdir(file_path):
+            shutil.copytree(file_path, os.path.join(dst_path, file_name))
 
-def ClearDirContents(path):
-    for fileName in os.listdir(path):
-        filePath = os.path.join(path, fileName)
+def clear_dir(path):
+    for file_name in os.listdir(path):
+        file_path = os.path.join(path, file_name)
         try:
-            if os.path.isfile(filePath):
-                os.remove(filePath)
-            elif os.path.isdir(filePath):
-                shutil.rmtree(filePath)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
         except Exception as e:
-            print("Failed to clean {}: {}".format(filePath, str(e)))
+            print("Failed to clean {}: {}".format(file_path, str(e)))
 
 def WinCompile(compileMode, debugger):
     macros = " ".join([
@@ -233,6 +233,8 @@ def WinCompile(compileMode, debugger):
             dllPathDst = os.path.join(paths["build"], lib.dllNames[indStr])
             shutil.copyfile(dllPathSrc, dllPathDst)
 
+    post_compile_custom(paths)
+
 def WinRun():
     os.system(" & ".join([
         "pushd " + paths["build"],
@@ -243,7 +245,7 @@ def WinRun():
 def WinDeploy():
     deployBundleName = PROJECT_NAME
     deployBundlePath = os.path.join(paths["deploy"], deployBundleName)
-    RemakeDestAndCopyDir(paths["build"], deployBundlePath)
+    remake_dest_and_copy_dir(paths["build"], deployBundlePath)
     for fileName in os.listdir(deployBundlePath):
         if fileName not in DEPLOY_FILES:
             filePath = os.path.join(deployBundlePath, fileName)
@@ -473,8 +475,8 @@ def DidFilesChange():
     return False
 
 def Clean():
-    ClearDirContents(paths["build"])
-    ClearDirContents(paths["deploy"])
+    clear_dir(paths["build"])
+    clear_dir(paths["deploy"])
 
 def Run():
     platformName = platform.system()
@@ -519,7 +521,7 @@ def Main():
         for srcDir, dstDir in COPY_DIRS.items():
             dirSrcPath = NormalizePathSlashes(paths["root"] + srcDir)
             dirDstPath = NormalizePathSlashes(paths["build"] + dstDir)
-            RemakeDestAndCopyDir(dirSrcPath, dirDstPath)
+            remake_dest_and_copy_dir(dirSrcPath, dirDstPath)
         if not os.path.exists(paths["build-logs"]):
             os.makedirs(paths["build-logs"])
 
