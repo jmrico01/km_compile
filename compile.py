@@ -161,9 +161,9 @@ def WinCompile(compileMode, debugger):
         ])
 
     includePaths = " ".join([
-        "/I" + paths["src"],
-        "/I" + paths["libs-internal"]
-    ] + [ "/I" + path for path in includeDirs.values() ])
+        "/I\"" + paths["src"] + "\"",
+        "/I\"" + paths["libs-internal"] + "\""
+    ] + [ "/I\"" + path + "\"" for path in includeDirs.values() ])
 
     linkerFlags = " ".join([
         "/incremental:no",  # disable incremental linking
@@ -192,7 +192,7 @@ def WinCompile(compileMode, debugger):
 
     for lib in LIBS_EXTERNAL:
         if lib.compiledNames is not None:
-            libPaths += " /LIBPATH:" + os.path.join(paths["libs-external"], lib.path, "win32", indStr)
+            libPaths += " /LIBPATH:\"" + os.path.join(paths["libs-external"], lib.path, "win32", indStr) + "\""
             libs += " " + lib.compiledNames[indStr]
 
     # Clear old PDB files
@@ -211,7 +211,7 @@ def WinCompile(compileMode, debugger):
         macros, compilerFlags, compilerWarningFlags, includePaths,
         "/Fe" + exeFileName,
         "/Fm" + PROJECT_NAME + "_win32.map",
-        paths["main-cpp"],
+        "\"" + paths["main-cpp"] + "\"",
         "/link", linkerFlags, libPaths, libs,
         "/PDB:" + pdbName
     ])
