@@ -4,60 +4,154 @@
 import argparse
 from enum import Enum
 import hashlib
-import json
 import os
 import platform
+import queue
 import random
 import shutil
+import subprocess
 import sys
+import threading
+
+class Platform(Enum):
+    WINDOWS = "Windows"
+    LINUX = "Linux"
+    MAC = "Darwin"
+
+PLATFORM = ({ p.value: p for p in list(Platform) })[platform.system()]
 
 class CompileMode(Enum):
     DEBUG    = "debug"
     INTERNAL = "internal"
     RELEASE  = "release"
 
-def NormalizePathSlashes(path):
-    return path.replace("/", os.sep)
+class TargetType(Enum):
+    EXECUTABLE = "exe"
+    LIB_DYNAMIC = "lib_dynamic"
+    LIB_STATIC = "lib_static"
+
+class Define:
+    def __init__(self, name, value=None):
+        self.name = name
+        self.value = value
+
+    def to_compiler_flag(self):
+        flag_str = ""
+        if PLATFORM == Platform.WINDOWS:
+            flag_str += "/D" + self.name
+        elif PLATFORM == Platform.LINUX or PLATFORM == Platform.MAC:
+            flag_str += "-D" + self.name
+
+        if self.value is not None:
+            flag_str += "=" + self.value
+
+        return flag_str
+
+class PlatformTargetOptions:
+    def __init__(self, defines, compiler_flags, linker_flags):
+        self.defines = defines
+        self.compiler_flags = compiler_flags
+        self.linker_flags = linker_flags
+
+    def get_compiler_flags(self):
+        return " ".join(
+            [d.to_compiler_flag() for d in self.defines] +
+            [flag for flag in self.compiler_flags]
+        )
+
+    def get_linker_flags(self):
+        return " ".join([flag for flag in self.linker_flags])
+
+class BuildTarget:
+    def __init__(self, name, source_file, type, defines=[], platform_options={}):
+        self.name = name
+        self.source_file = source_file
+        self.type = type
+        self.defines = defines
+        self.platform_options = platform_options
+
+    def get_output_name(self):
+        if self.type == TargetType.EXECUTABLE:
+            if PLATFORM == Platform.WINDOWS:
+                return self.name + "_win32.exe"
+            elif PLATFORM == Platform.LINUX:
+                return self.name + "_linux"
+            elif PLATFORM == Platform.MAC:
+                return self.name + "_macos"
+        else:
+            raise Exception("Unsupported target type: {}".format(self.type))
+
+    def get_compiler_flags(self):
+        compiler_flags = " ".join([d.to_compiler_flag() for d in self.defines])
+        if PLATFORM in self.platform_options:
+            compiler_flags = " ".join([
+                compiler_flags,
+                self.platform_options[PLATFORM].get_compiler_flags()
+            ])
+
+        return compiler_flags
+
+    def get_linker_flags(self):
+        linker_flags = ""
+        if PLATFORM in self.platform_options:
+            linker_flags = " ".join([
+                linker_flags,
+                self.platform_options[PLATFORM].get_linker_flags()
+            ])
+
+        return linker_flags
+
+class CopyDir:
+    def __init__(self, src, dst):
+        self.src = src
+        self.dst = dst
+
+class LibExternal:
+    def __init__(self, name, path, compiledNames = None, dllNames = None):
+        self.name = name
+        self.path = path
+        self.compiledNames = compiledNames
+        self.dllNames = dllNames
 
 # Important directory & file paths
 paths = {}
-
 paths["root"] = os.getcwd()
 
-sys.path.insert(0, os.path.join(paths["root"], "compile"))
-from app_info import PROJECT_NAME, COPY_DIRS, DEFINES, DEPLOY_FILES, LIBS_EXTERNAL, PATHS, USE_KM_PLATFORM, post_compile_custom
-
-paths["build"]          = paths["root"]  + "/build"
-paths["data"]           = paths["root"]  + "/data"
-paths["deploy"]         = paths["root"]  + "/deploy"
-paths["libs-external"]  = paths["root"]  + "/libs/external"
-paths["libs-internal"]  = paths["root"]  + "/libs/internal"
-paths["src"]            = paths["root"]  + "/src"
-
-paths["build-logs"]     = paths["build"] + "/logs"
-
-# Main source file
-paths["main-cpp"]       = paths["src"]   + "/main.cpp"
-paths["win32-main-cpp"] = paths["libs-internal"] + "/km_platform/win32_main.cpp"
-
-# Source hashes for if-changed compilation
-paths["src-hashes"]     = paths["build"] + "/src_hashes"
-paths["src-hashes-old"] = paths["build"] + "/src_hashes_old"
-
-# Other project-specific paths
-for name, path in PATHS.items():
-    paths[name] = path
-
-for name in paths:
-    paths[name] = NormalizePathSlashes(paths[name])
-
 includeDirs = {}
-for lib in LIBS_EXTERNAL:
-    libPath = paths["libs-external"] + "/" + lib.path
-    includeDirs[lib.name] = libPath + "/include"
 
-for name in includeDirs:
-    includeDirs[name] = NormalizePathSlashes(includeDirs[name])
+sys.path.insert(0, os.path.join(paths["root"], "compile"))
+import app_info
+
+def normalize_path_slashes(path):
+    return path.replace("/", os.sep)
+
+def fill_paths_and_include_dirs():
+    paths["build"]          = paths["root"]  + "/build"
+    paths["data"]           = paths["root"]  + "/data"
+    paths["deploy"]         = paths["root"]  + "/deploy"
+    paths["libs-external"]  = paths["root"]  + "/libs/external"
+    paths["libs-internal"]  = paths["root"]  + "/libs/internal"
+    paths["src"]            = paths["root"]  + "/src"
+
+    paths["build-logs"]     = paths["build"] + "/logs"
+
+    # Source hashes for if-changed compilation
+    paths["src-hashes"]     = paths["build"] + "/src_hashes"
+    paths["src-hashes-old"] = paths["build"] + "/src_hashes_old"
+
+    # Other project-specific paths
+    for name, path in app_info.PATHS.items():
+        paths[name] = path
+
+    for name in paths:
+        paths[name] = normalize_path_slashes(paths[name])
+
+    for lib in app_info.LIBS_EXTERNAL:
+        libPath = paths["libs-external"] + "/" + lib.path
+        includeDirs[lib.name] = libPath + "/include"
+
+    for name in includeDirs:
+        includeDirs[name] = normalize_path_slashes(includeDirs[name])
 
 def remake_dest_and_copy_dir(src_path, dst_path):
     # Re-create (clear) the directory
@@ -87,32 +181,38 @@ def make_and_clear_dir(path):
         except Exception as e:
             print("Failed to clean {}: {}".format(file_path, str(e)))
 
-def WinCompile(compileMode, debugger):
-    macros = " ".join([
-        "/DGAME_WIN32=1",
-        "/D_CRT_SECURE_NO_WARNINGS"
-    ])
-    macros = macros + " " + " ".join(["/D" + define for define in DEFINES])
-    if compileMode == CompileMode.DEBUG:
-        macros = " ".join([
-            macros,
-            "/DGAME_INTERNAL=1",
-            "/DGAME_SLOW=1"
-        ])
-    elif compileMode == CompileMode.INTERNAL:
-        macros = " ".join([
-            macros,
-            "/DGAME_INTERNAL=1",
-            "/DGAME_SLOW=0"
-        ])
-    elif compileMode == CompileMode.RELEASE:
-        macros = " ".join([
-            macros,
-            "/DGAME_INTERNAL=0",
-            "/DGAME_SLOW=0"
-        ])
+def get_common_defines(compile_mode):
+    defines = []
+    if PLATFORM == Platform.WINDOWS:
+        defines.append(Define("GAME_WIN32", "1"))
+    elif PLATFORM == Platform.LINUX:
+        defines.append(Define("GAME_LINUX", "1"))
+    elif PLATFORM == Platform.MAC:
+        defines.append(Define("GAME_MACOS", "1"))
 
-    compilerFlags = " ".join([
+    if compile_mode == CompileMode.DEBUG:
+        defines.append(Define("GAME_INTERNAL", "1"))
+        defines.append(Define("GAME_SLOW",     "1"))
+    elif compile_mode == CompileMode.INTERNAL:
+        defines.append(Define("GAME_INTERNAL", "1"))
+        defines.append(Define("GAME_SLOW",     "0"))
+    elif compile_mode == CompileMode.RELEASE:
+        defines.append(Define("GAME_INTERNAL", "0"))
+        defines.append(Define("GAME_SLOW",     "0"))
+
+    return defines
+
+def win_compile(target, compile_mode):
+    compiler_flags = ""
+
+    # Add defines/macros
+    compiler_flags = " ".join([
+        compiler_flags
+    ] + [d.to_compiler_flag() for d in get_common_defines(compile_mode)])
+
+    # Add general compiler flags
+    compiler_flags = " ".join([
+        compiler_flags,
         "/nologo",       # disable the "Microsoft C/C++ Optimizing Compiler" message
         "/Gm-",          # disable incremental build things
         "/GR-",          # disable type information
@@ -120,59 +220,77 @@ def WinCompile(compileMode, debugger):
         "/EHsc",         # handle stdlib errors
         "/std:c++latest" # use latest C++ standard (aggregate initialization...)
     ])
-    if compileMode == CompileMode.DEBUG:
-        compilerFlags = " ".join([
-            compilerFlags,
+    if compile_mode == CompileMode.DEBUG:
+        compiler_flags = " ".join([
+            compiler_flags,
             "/MTd", # CRT static link (debug)
             "/Od",  # no optimization
             "/Oi",  # ...except, optimize compiler intrinsics (do I need this?)
             "/Z7"   # minimal "old school" debug information
         ])
-    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
-        compilerFlags = " ".join([
-            compilerFlags,
+    elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
+        compiler_flags = " ".join([
+            compiler_flags,
             "/MT", # CRT static link
             "/Ox", # full optimization
             "/Z7"  # minimal "old school" debug information
         ])
 
-    compilerWarningFlags = " ".join([
-        "/WX",      # treat warnings as errors
-        "/W4",      # level 4 warnings
-
-        # disable the following warnings:
-        "/wd4100",  # unused function arguments
-        "/wd4201",  # nonstandard extension used: nameless struct/union
-        "/wd4458",  # declaration of X hides class member
-        "/wd4505",  # unreferenced local function has been removed
+    # Add compiler warning flags
+    compiler_flags = " ".join([
+        compiler_flags,
+        "/WX", # treat warnings as errors
+        "/W4", # level 4 warnings
     ])
-    # TODO hmm... is this a Hack
-    if PROJECT_NAME == "nopasanada":
-        compilerWarningFlags = " ".join([
-            compilerWarningFlags,
-            "/wd4267", # conversion from X to Y, possible loss of data
-            "/wd4456", # declaration of X hides previous local declaration
-        ])
-    if compileMode == CompileMode.DEBUG:
-        compilerWarningFlags = " ".join([
-            compilerWarningFlags,
+    if compile_mode == CompileMode.DEBUG:
+        compiler_flags = " ".join([
+            compiler_flags,
+            "/wd4100", # unused function arguments
             "/wd4189", # local variable is initialized but not referenced
+            "/wd4505", # unreferenced local function has been removed
             "/wd4702", # unreachable code (early return for debugging)
         ])
 
-    includePaths = " ".join([
+    # Add include paths
+    compiler_flags = " ".join([
+        compiler_flags,
         "/I\"" + paths["src"] + "\"",
         "/I\"" + paths["libs-internal"] + "\""
     ] + [ "/I\"" + path + "\"" for path in includeDirs.values() ])
 
-    linkerFlags = " ".join([
+    # Add all custom defines + compiler flags
+    compiler_flags = " ".join([
+        compiler_flags,
+        target.get_compiler_flags()
+    ])
+
+    """
+    # TODO hmm... is this a Hack
+    if target.name == "nopasanada":
+        compiler_warning_flags = " ".join([
+            compiler_warning_flags,
+            "/wd4267", # conversion from X to Y, possible loss of data
+            "/wd4456", # declaration of X hides previous local declaration
+        ])
+    if compile_mode == CompileMode.DEBUG:
+        compiler_warning_flags = " ".join([
+            compiler_warning_flags,
+            "/wd4189", # local variable is initialized but not referenced
+            "/wd4702", # unreachable code (early return for debugging)
+        ])
+    """
+
+    linker_flags = ""
+
+    # Add general linker flags
+    linker_flags = " ".join([
         "/incremental:no",  # disable incremental linking
         "/opt:ref"          # get rid of extraneous linkages
     ])
 
-    libPaths = ""
-
-    libs = " ".join([
+    # Add libraries
+    linker_flags = " ".join([
+        linker_flags,
         "user32.lib",
         "gdi32.lib",
         "opengl32.lib",
@@ -182,75 +300,74 @@ def WinCompile(compileMode, debugger):
     ])
 
     indStr = ""
-    if compileMode == CompileMode.DEBUG:
+    if compile_mode == CompileMode.DEBUG:
         indStr = "debug"
-    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
+    elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
         indStr = "release"
     else:
         # TODO shouldn't have to check this everywhere
-        raise Exception("Unknown compile mode {}".format(compileMode))
+        raise Exception("Unknown compile mode {}".format(compile_mode))
 
-    for lib in LIBS_EXTERNAL:
+    for lib in app_info.LIBS_EXTERNAL:
         if lib.compiledNames is not None:
-            libPaths += " /LIBPATH:\"" + os.path.join(paths["libs-external"], lib.path, "win32", indStr) + "\""
-            libs += " " + lib.compiledNames[indStr]
+            linker_flags += " /LIBPATH:\"" + os.path.join(paths["libs-external"], lib.path, "win32", indStr) + "\""
+            linker_flags += " " + lib.compiledNames[indStr]
+
+    # Add all custom linker flags
+    linker_flags = " ".join([
+        linker_flags,
+        target.get_linker_flags()
+    ])
 
     # Clear old PDB files
-    for fileName in os.listdir(paths["build"]):
-        if ".pdb" in fileName:
+    # TODO with multiple compile targets, idk about this
+    for file_name in os.listdir(paths["build"]):
+        if ".pdb" in file_name:
             try:
-                os.remove(os.path.join(paths["build"], fileName))
+                os.remove(os.path.join(paths["build"], file_name))
             except:
-                print("Couldn't remove " + fileName)
+                print("Couldn't remove " + file_name)
 
-    pdbName = PROJECT_NAME + "_game" + str(random.randrange(99999)) + ".pdb"
+    exe_name = target.get_output_name()
+    map_name = target.name + "_win32.map"
+    pdb_name = target.name + "_game" + str(random.randrange(99999)) + ".pdb"
+    src_name = os.path.join(paths["root"], target.source_file)
 
-    exeFileName = PROJECT_NAME + "_win32.exe"
-    compileCommand = " ".join([
-        "cl",
-        macros, compilerFlags, compilerWarningFlags, includePaths,
-        "/Fe" + exeFileName,
-        "/Fm" + PROJECT_NAME + "_win32.map",
-        "\"" + paths["main-cpp"] + "\"",
-        "/link", linkerFlags, libPaths, libs,
-        "/PDB:" + pdbName
+    compile_command = " ".join([
+        "cl", compiler_flags, "/Fe" + exe_name, "/Fm" + map_name, "\"" + src_name + "\"",
+        "/link", linker_flags, "/PDB:" + pdb_name
     ])
-    
-    devenvCommand = "rem"
-    if debugger:
-        devenvCommand = "devenv " + exeFileName
 
-    loadCompiler = "call \"" + paths["win32-vcvarsall"] + "\" x64"
-    os.system(" & ".join([
+    load_compiler = "call \"" + paths["win32-vcvarsall"] + "\" x64"
+
+    subprocess.call(" & ".join([
         "pushd " + paths["build"],
-        loadCompiler,
-        # compileDLLCommand,
-        compileCommand,
-        devenvCommand,
+        load_compiler,
+        compile_command,
         "popd"
-    ]))
+    ]), shell=True)
 
-    for lib in LIBS_EXTERNAL:
+    for lib in app_info.LIBS_EXTERNAL:
         if lib.dllNames is not None:
-            dllPathSrc = os.path.join(paths["libs-external"], lib.path, "win32", indStr, lib.dllNames[indStr])
-            dllPathDst = os.path.join(paths["build"], lib.dllNames[indStr])
-            shutil.copyfile(dllPathSrc, dllPathDst)
+            dll_path_src = os.path.join(paths["libs-external"], lib.path, "win32", indStr, lib.dllNames[indStr])
+            dll_path_dst = os.path.join(paths["build"], lib.dllNames[indStr])
+            shutil.copyfile(dll_path_src, dll_path_dst)
 
-    post_compile_custom(paths)
+    app_info.post_compile_custom(paths)
 
-def WinRun():
+def win_run(target):
     os.system(" & ".join([
         "pushd " + paths["build"],
-        PROJECT_NAME + "_win32.exe",
+        target.name + "_win32.exe",
         "popd"
     ]))
 
-def WinDeploy():
-    deployBundleName = PROJECT_NAME
+def win_deploy():
+    deployBundleName = app_info.PROJECT_NAME
     deployBundlePath = os.path.join(paths["deploy"], deployBundleName)
     remake_dest_and_copy_dir(paths["build"], deployBundlePath)
     for fileName in os.listdir(deployBundlePath):
-        if fileName not in DEPLOY_FILES:
+        if fileName not in app_info.DEPLOY_FILES:
             filePath = os.path.join(deployBundlePath, fileName)
             if os.path.isfile(filePath):
                 os.remove(filePath)
@@ -260,110 +377,125 @@ def WinDeploy():
     deployZipPath = os.path.join(paths["deploy"], "0. Unnamed")
     shutil.make_archive(deployZipPath, "zip", root_dir=paths["deploy"], base_dir=deployBundleName)
 
-def LinuxCompile(compileMode):
-    macros = " ".join([
-        "-DGAME_LINUX=1",
-        "-DGAME_INTERNAL=1",
-        "-DGAME_SLOW=1"
-    ])
-    macros = macros + " " + " ".join(["-D" + define for define in DEFINES])
-    compilerFlags = " ".join([
+def linux_compile(compile_mode):
+    compiler_flags = ""
+
+    # Add defines/macros
+    compiler_flags = " ".join([
+        compiler_flags
+    ] + [d.to_compiler_flag() for d in get_common_defines(compile_mode)])
+
+    # Add general compiler flags
+    compiler_flags = " ".join([
+        compiler_flags,
         "-std=c++17",     # use C++17 standard
         "-ggdb3",         # generate level 3 (max) GDB debug info.
         "-fno-rtti",      # disable run-time type info
         "-fno-exceptions" # disable C++ exceptions (ew)
     ])
-    if compileMode == CompileMode.DEBUG:
-        compilerFlags = " ".join([
-            compilerFlags,
+    if compile_mode == CompileMode.DEBUG:
+        compiler_flags = " ".join([
+            compiler_flags,
             "-O0", # no optimization
         ])
-    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
-        compilerFlags = " ".join([
-            compilerFlags,
+    elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
+        compiler_flags = " ".join([
+            compiler_flags,
             "-O3", # level 3 optimizations
         ])
-    compilerWarningFlags = " ".join([
+
+    # Add compiler warning flags
+    compiler_flags = " ".join([
+        compiler_flags,
         "-Werror",  # treat warnings as errors
         "-Wall",    # enable all warnings
 
-        # disable the following warnings:
         "-Wno-char-subscripts", # using char as an array subscript
-        "-Wno-unused-function"  # unused function
     ])
-    includePaths = " ".join([
+    if compile_mode == CompileMode.DEBUG:
+        compiler_flags = " ".join([
+            compiler_flags,
+            "-Wno-unused-function"  # unused function
+        ])
+
+    # Add include paths
+    compiler_flags = " ".join([
+        compiler_flags,
         "-I" + paths["src"],
         "-I" + paths["libs-internal"]
     ] + [ "-I" + path for path in includeDirs.values() ])
 
-    linkerFlags = " ".join([
+    # Add all custom defines + compiler flags
+    compiler_flags = " ".join([
+        compiler_flags,
+        target.get_compiler_flags()
+    ])
+
+    linker_flags = ""
+
+    # Add general linker flags
+    linker_flags = " ".join([
         "-fvisibility=hidden"
     ])
 
-
-    libPaths = ""
-
-    libs = " ".join([
+    # Add libraries
+    linker_flags = " ".join([
+        linker_flags,
         "-lm",
         "-lpthread"
     ])
     # TODO hmmm... is this hack #2
-    if PROJECT_NAME == "nopasanada":
-        libs = " ".join([
-            libs,
+    if app_info.PROJECT_NAME == "nopasanada":
+        linker_flags = " ".join([
+            linker_flags,
             "-lz",
             "-lssl",
             "-lcrypto"
         ])
 
-    indStr = ""
-    if compileMode == CompileMode.DEBUG:
-        indStr = "debug"
-    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
-        indStr = "release"
-    else:
-        # TODO shouldn't have to check this everywhere
-        raise Exception("Unknown compile mode {}".format(compileMode))
+    # TODO compiled libs aren't added on linux
 
-    for lib in LIBS_EXTERNAL:
-        if lib.compiledNames is not None:
-            libPaths += " /LIBPATH:" + os.path.join(paths["libs-external"], lib.path, "win32", indStr)
-            libs += " " + lib.compiledNames[indStr]
+    # Add all custom linker flags
+    linker_flags = " ".join([
+        linker_flags,
+        target.get_linker_flags()
+    ])
 
-    compileCommand = " ".join([
-        "g++-9",
-        macros, compilerFlags, compilerWarningFlags, includePaths,
-        paths["main-cpp"],
-        "-o " + PROJECT_NAME + "_linux",
-        linkerFlags, libPaths, libs
+    exe_name = target.get_output_name()
+    src_name = os.path.join(paths["root"], target.source_file)
+
+    compile_command = " ".join([
+        "g++-9", compiler_flags, src_name, "-o " + exe_name, linker_flags
     ])
 
     os.system("bash -c \"" + " ; ".join([
         "pushd " + paths["build"] + " > /dev/null",
-        compileCommand,
+        compile_command,
         "popd > /dev/null"
     ]) + "\"")
 
-def LinuxRun():
-    os.system(paths["build"] + os.sep + PROJECT_NAME + "_linux")
+def linux_run():
+    os.system(paths["build"] + os.sep + app_info.PROJECT_NAME + "_linux")
 
-def MacCompile(compileMode):
+def mac_compile(compile_mode):
+    raise Exception("bruh... gotta fix this before using it")
+
     macros = " ".join([
         "-DGAME_MACOS"
     ])
-    if compileMode == CompileMode.DEBUG:
+    if compile_mode == CompileMode.DEBUG:
         macros = " ".join([
             macros,
             "-DGAME_INTERNAL=1",
             "-DGAME_SLOW=1"
         ])
-    elif compileMode == CompileMode.INTERNAL:
+    elif compile_mode == CompileMode.INTERNAL:
         macros = " ".join([
             macros,
             "-DGAME_INTERNAL=1",
             "-DGAME_SLOW=0"
         ])
-    elif compileMode == CompileMode.RELEASE:
+    elif compile_mode == CompileMode.RELEASE:
         macros = " ".join([
             macros,
             "-DGAME_INTERNAL=0",
@@ -376,12 +508,12 @@ def MacCompile(compileMode):
         "-fno-rtti",      # disable run-time type info
         "-fno-exceptions" # disable C++ exceptions (ew)
     ])
-    if compileMode == CompileMode.DEBUG:
+    if compile_mode == CompileMode.DEBUG:
         compilerFlags = " ".join([
             compilerFlags,
             "-g" # generate debug info
         ])
-    elif compileMode == CompileMode.INTERNAL or compileMode == CompileMode.RELEASE:
+    elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
         compilerFlags = " ".join([
             compilerFlags,
             "-O3" # full optimization
@@ -421,7 +553,7 @@ def MacCompile(compileMode):
         "clang",
         macros, compilerFlags, compilerWarningFlags, includePaths,
         "-dynamiclib", paths["main-cpp"],
-        "-o " + PROJECT_NAME + "_game.dylib",
+        "-o " + app_info.PROJECT_NAME + "_game.dylib",
         linkerFlags, libPaths, libs
     ])
 
@@ -430,7 +562,7 @@ def MacCompile(compileMode):
         macros, compilerFlags, compilerWarningFlags, #includePaths,
         frameworks,
         paths["macos-main-mm"],
-        "-o " + PROJECT_NAME + "_macos"
+        "-o " + app_info.PROJECT_NAME + "_macos"
     ])
 
     os.system("bash -c \"" + " ; ".join([
@@ -440,10 +572,10 @@ def MacCompile(compileMode):
         "popd > /dev/null"
     ]) + "\"")
 
-def MacRun():
-    os.system(paths["build"] + os.sep + PROJECT_NAME + "_macos")
+def mac_run():
+    os.system(paths["build"] + os.sep + app_info.PROJECT_NAME + "_macos")
 
-def FileMD5(filePath):
+def calc_file_md5(filePath):
     md5 = hashlib.md5()
     with open(filePath, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -451,15 +583,15 @@ def FileMD5(filePath):
     
     return md5.hexdigest()
 
-def ComputeSrcHashes():
+def compute_src_hashes():
     with open(paths["src-hashes"], "w") as out:
         for root, _, files in os.walk(paths["src"]):
             for fileName in files:
                 filePath = os.path.join(root, fileName)
                 out.write(filePath + "\n")
-                out.write(FileMD5(filePath) + "\n")
+                out.write(calc_file_md5(filePath) + "\n")
 
-def DidFilesChange():
+def did_files_change():
     hashPath = paths["src-hashes"]
     oldHashPath = paths["src-hashes-old"]
 
@@ -470,38 +602,37 @@ def DidFilesChange():
     else:
         return True
 
-    ComputeSrcHashes()
+    compute_src_hashes()
     if os.path.getsize(hashPath) != os.path.getsize(oldHashPath) \
     or open(hashPath, "r").read() != open(oldHashPath, "r").read():
         return True
 
     return False
 
-def Clean():
+def clean():
     make_and_clear_dir(paths["build"])
     make_and_clear_dir(paths["deploy"])
 
-def Run():
-    platformName = platform.system()
-    if platformName == "Windows":
-        WinRun()
-    elif platformName == "Linux":
-        LinuxRun()
-    elif platformName == "Darwin":
-        MacRun()
+def run(target):
+    if PLATFORM == Platform.WINDOWS:
+        win_run(target)
+    elif PLATFORM == Platform.LINUX:
+        linux_run(target)
+    elif PLATFORM == Platform.MAC:
+        mac_run(target)
     else:
-        print("Unsupported platform: " + platformName)
+        raise Exception("Unsupported platform: " + PLATFORM)
 
-def Main():
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", help="compilation mode")
     parser.add_argument("--ifchanged", action="store_true",
         help="run the specified compile command only if files have changed")
-    parser.add_argument("--debugger", action="store_true",
-        help="open the platform debugger after compiling")
     parser.add_argument("--deploy", action="store_true",
         help="package and deploy a game build after compiling")
     args = parser.parse_args()
+
+    fill_paths_and_include_dirs()
 
     if not os.path.exists(paths["build"]):
         os.makedirs(paths["build"])
@@ -509,39 +640,39 @@ def Main():
         os.makedirs(paths["deploy"])
 
     if args.ifchanged:
-        if not DidFilesChange():
+        if not did_files_change():
             print("No changes, nothing to compile")
             return
 
-    compileModeDict = { cm.value: cm for cm in list(CompileMode) }
+    compile_mode_dict = { cm.value: cm for cm in list(CompileMode) }
 
     if args.mode == "clean":
-        Clean()
+        clean()
     elif args.mode == "run":
-        Run()
-    elif args.mode in compileModeDict:
-        ComputeSrcHashes()
-        for srcDir, dstDir in COPY_DIRS.items():
-            dirSrcPath = NormalizePathSlashes(paths["root"] + srcDir)
-            dirDstPath = NormalizePathSlashes(paths["build"] + dstDir)
-            remake_dest_and_copy_dir(dirSrcPath, dirDstPath)
+        run(app_info.TARGETS[0])
+    elif args.mode in compile_mode_dict:
+        compute_src_hashes()
+        for copy_dir in app_info.COPY_DIRS:
+            dir_src_path = os.path.join(paths["root"], copy_dir.src)
+            dir_dst_path = os.path.join(paths["build"], copy_dir.dst)
+            remake_dest_and_copy_dir(dir_src_path, dir_dst_path)
         if not os.path.exists(paths["build-logs"]):
             os.makedirs(paths["build-logs"])
 
-        compileMode = compileModeDict[args.mode]
-        platformName = platform.system()
-        if platformName == "Windows":
-            WinCompile(compileMode, args.debugger)
-            if args.deploy:
-                WinDeploy()
-        elif platformName == "Linux":
-            LinuxCompile(compileMode)
-        elif platformName == "Darwin":
-            MacCompile(compileMode)
-        else:
-            print("Unsupported platform: " + platformName)
+        compile_mode = compile_mode_dict[args.mode]
+        for target in app_info.TARGETS:
+            if PLATFORM == Platform.WINDOWS:
+                win_compile(target, compile_mode)
+                if args.deploy:
+                    win_deploy()
+            elif PLATFORM == Platform.LINUX:
+                linux_compile(compile_mode)
+            elif PLATFORM == Platform.MAC:
+                mac_compile(compile_mode)
+            else:
+                raise Exception("Unsupported platform: " + PLATFORM)
     else:
-        print("Unrecognized argument: " + args.mode)
+        raise Exception("Unrecognized argument: " + args.mode)
 
 if __name__ == "__main__":
-    Main()
+    main()
