@@ -185,6 +185,7 @@ def get_common_defines(compile_mode):
     defines = []
     if PLATFORM == Platform.WINDOWS:
         defines.append(Define("GAME_WIN32", "1"))
+        defines.append(Define("_CRT_SECURE_NO_WARNINGS"))
     elif PLATFORM == Platform.LINUX:
         defines.append(Define("GAME_LINUX", "1"))
     elif PLATFORM == Platform.MAC:
