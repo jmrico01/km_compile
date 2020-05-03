@@ -36,12 +36,7 @@ class Define:
         self.value = value
 
     def to_compiler_flag(self):
-        flag_str = ""
-        if PLATFORM == Platform.WINDOWS:
-            flag_str += "/D" + self.name
-        elif PLATFORM == Platform.LINUX or PLATFORM == Platform.MAC:
-            flag_str += "-D" + self.name
-
+        flag_str = "-D" + self.name
         if self.value is not None:
             flag_str += "=" + self.value
 
@@ -214,50 +209,47 @@ def win_compile(target, compile_mode):
     # Add general compiler flags
     compiler_flags = " ".join([
         compiler_flags,
-        "/nologo",       # disable the "Microsoft C/C++ Optimizing Compiler" message
-        "/Gm-",          # disable incremental build things
-        "/GR-",          # disable type information
-        "/EHa-",         # disable exception handling
-        "/EHsc",         # handle stdlib errors
-        "/std:c++latest" # use latest C++ standard (aggregate initialization...)
+        "-nologo",    # disable the "Microsoft C/C++ Optimizing Compiler" message
+        "-Gm-",       # disable incremental build things
+        "-GR-",       # disable type information
+        "-EHa-",      # disable exception handling
+        "-EHsc",      # handle stdlib errors
+        "-std:c++17", # use latest C++ standard (aggregate initialization...)
+        "-Z7"         # minimal "old school" debug information
     ])
     if compile_mode == CompileMode.DEBUG:
         compiler_flags = " ".join([
             compiler_flags,
-            "/MTd", # CRT static link (debug)
-            "/Od",  # no optimization
-            "/Oi",  # ...except, optimize compiler intrinsics (do I need this?)
-            "/Z7"   # minimal "old school" debug information
+            "-Od",  # no optimization
+            "-Oi",  # ...except, optimize compiler intrinsics (do I need this?)
         ])
     elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
         compiler_flags = " ".join([
             compiler_flags,
-            "/MT", # CRT static link
-            "/Ox", # full optimization
-            "/Z7"  # minimal "old school" debug information
+            "-Ox" # full optimization
         ])
 
     # Add compiler warning flags
     compiler_flags = " ".join([
         compiler_flags,
-        "/WX", # treat warnings as errors
-        "/W4", # level 4 warnings
+        "-WX", # treat warnings as errors
+        "-W4", # level 4 warnings
     ])
     if compile_mode == CompileMode.DEBUG:
         compiler_flags = " ".join([
             compiler_flags,
-            "/wd4100", # unused function arguments
-            "/wd4189", # local variable is initialized but not referenced
-            "/wd4505", # unreferenced local function has been removed
-            "/wd4702", # unreachable code (early return for debugging)
+            "-wd4100", # unused function arguments
+            "-wd4189", # local variable is initialized but not referenced
+            "-wd4505", # unreferenced local function has been removed
+            "-wd4702", # unreachable code (early return for debugging)
         ])
 
     # Add include paths
     compiler_flags = " ".join([
         compiler_flags,
-        "/I\"" + paths["src"] + "\"",
-        "/I\"" + paths["libs-internal"] + "\""
-    ] + [ "/I\"" + path + "\"" for path in includeDirs.values() ])
+        "-I\"" + paths["src"] + "\"",
+        "-I\"" + paths["libs-internal"] + "\""
+    ] + [ "-I\"" + path + "\"" for path in includeDirs.values() ])
 
     # Add all custom defines + compiler flags
     compiler_flags = " ".join([
@@ -285,19 +277,14 @@ def win_compile(target, compile_mode):
 
     # Add general linker flags
     linker_flags = " ".join([
-        "/incremental:no",  # disable incremental linking
-        "/opt:ref"          # get rid of extraneous linkages
+        "-incremental:no",  # disable incremental linking
+        "-opt:ref"          # get rid of extraneous linkages
     ])
 
     # Add libraries
     linker_flags = " ".join([
         linker_flags,
-        "user32.lib",
-        "gdi32.lib",
-        "opengl32.lib",
-        "ole32.lib",
-        "winmm.lib",
-        "shell32.lib"
+        "kernel32.lib"
     ])
 
     indStr = ""
@@ -311,7 +298,7 @@ def win_compile(target, compile_mode):
 
     for lib in app_info.LIBS_EXTERNAL:
         if lib.compiledNames is not None:
-            linker_flags += " /LIBPATH:\"" + os.path.join(paths["libs-external"], lib.path, "win32", indStr) + "\""
+            linker_flags += " -LIBPATH:\"" + os.path.join(paths["libs-external"], lib.path, "win32", indStr) + "\""
             linker_flags += " " + lib.compiledNames[indStr]
 
     # Add all custom linker flags
@@ -335,8 +322,8 @@ def win_compile(target, compile_mode):
     src_name = os.path.join(paths["root"], target.source_file)
 
     compile_command = " ".join([
-        "cl", compiler_flags, "/Fe" + exe_name, "/Fm" + map_name, "\"" + src_name + "\"",
-        "/link", linker_flags, "/PDB:" + pdb_name
+        "cl", compiler_flags, "-Fe" + exe_name, "-Fm" + map_name, "\"" + src_name + "\"",
+        "-link", linker_flags, "-PDB:" + pdb_name
     ])
 
     load_compiler = "call \"" + paths["win32-vcvarsall"] + "\" x64"
