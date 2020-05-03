@@ -209,13 +209,13 @@ def win_compile(target, compile_mode):
     # Add general compiler flags
     compiler_flags = " ".join([
         compiler_flags,
-        "-nologo",    # disable the "Microsoft C/C++ Optimizing Compiler" message
-        "-Gm-",       # disable incremental build things
-        "-GR-",       # disable type information
-        "-EHa-",      # disable exception handling
-        "-EHsc",      # handle stdlib errors
-        "-std:c++17", # use latest C++ standard (aggregate initialization...)
-        "-Z7"         # minimal "old school" debug information
+        "-nologo",        # disable the "Microsoft C/C++ Optimizing Compiler" message
+        "-Gm-",           # disable incremental build things
+        "-GR-",           # disable type information
+        "-EHa-",          # disable exception handling
+        "-EHsc",          # handle stdlib errors
+        "-std:c++latest", # use latest C++ standard (aggregate initialization...)
+        "-Z7"             # minimal "old school" debug information
     ])
     if compile_mode == CompileMode.DEBUG:
         compiler_flags = " ".join([
