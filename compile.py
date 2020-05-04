@@ -350,20 +350,20 @@ def win_run(target):
         "popd"
     ]))
 
-def win_deploy():
-    deployBundleName = app_info.PROJECT_NAME
-    deployBundlePath = os.path.join(paths["deploy"], deployBundleName)
-    remake_dest_and_copy_dir(paths["build"], deployBundlePath)
-    for fileName in os.listdir(deployBundlePath):
+def win_deploy(target):
+    deploy_bundle_name = target.name
+    deploy_bundle_path = os.path.join(paths["deploy"], deploy_bundle_name)
+    remake_dest_and_copy_dir(paths["build"], deploy_bundle_path)
+    for fileName in os.listdir(deploy_bundle_path):
         if fileName not in app_info.DEPLOY_FILES:
-            filePath = os.path.join(deployBundlePath, fileName)
+            filePath = os.path.join(deploy_bundle_path, fileName)
             if os.path.isfile(filePath):
                 os.remove(filePath)
             elif os.path.isdir(filePath):
                 shutil.rmtree(filePath)
 
     deployZipPath = os.path.join(paths["deploy"], "0. Unnamed")
-    shutil.make_archive(deployZipPath, "zip", root_dir=paths["deploy"], base_dir=deployBundleName)
+    shutil.make_archive(deployZipPath, "zip", root_dir=paths["deploy"], base_dir=deploy_bundle_name)
 
 def linux_compile(compile_mode):
     compiler_flags = ""
@@ -652,7 +652,7 @@ def main():
             if PLATFORM == Platform.WINDOWS:
                 win_compile(target, compile_mode)
                 if args.deploy:
-                    win_deploy()
+                    win_deploy(target)
             elif PLATFORM == Platform.LINUX:
                 linux_compile(compile_mode)
             elif PLATFORM == Platform.MAC:
