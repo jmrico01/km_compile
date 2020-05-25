@@ -329,7 +329,7 @@ def win_compile(target, compile_mode):
     load_compiler = "call \"" + paths["win32-vcvarsall"] + "\" x64"
 
     subprocess.call(" & ".join([
-        "pushd " + paths["build"],
+        "pushd \"" + paths["build"] + "\"",
         load_compiler,
         compile_command,
         "popd"
@@ -365,7 +365,7 @@ def win_deploy(target):
     deployZipPath = os.path.join(paths["deploy"], "0. Unnamed")
     shutil.make_archive(deployZipPath, "zip", root_dir=paths["deploy"], base_dir=deploy_bundle_name)
 
-def linux_compile(compile_mode):
+def linux_compile(target, compile_mode):
     compiler_flags = ""
 
     # Add defines/macros
@@ -409,9 +409,9 @@ def linux_compile(compile_mode):
     # Add include paths
     compiler_flags = " ".join([
         compiler_flags,
-        "-I" + paths["src"],
-        "-I" + paths["libs-internal"]
-    ] + [ "-I" + path for path in includeDirs.values() ])
+        "-I'" + paths["src"] + "'",
+        "-I'" + paths["libs-internal"] + "'"
+    ] + [ "-I'" + path + "'" for path in includeDirs.values() ])
 
     # Add all custom defines + compiler flags
     compiler_flags = " ".join([
@@ -432,14 +432,6 @@ def linux_compile(compile_mode):
         "-lm",
         "-lpthread"
     ])
-    # TODO hmmm... is this hack #2
-    if app_info.PROJECT_NAME == "nopasanada":
-        linker_flags = " ".join([
-            linker_flags,
-            "-lz",
-            "-lssl",
-            "-lcrypto"
-        ])
 
     # TODO compiled libs aren't added on linux
 
@@ -453,11 +445,11 @@ def linux_compile(compile_mode):
     src_name = os.path.join(paths["root"], target.source_file)
 
     compile_command = " ".join([
-        "g++-9", compiler_flags, src_name, "-o " + exe_name, linker_flags
+        "g++-9", compiler_flags, "'" + src_name + "'", "-o " + exe_name, linker_flags
     ])
 
     os.system("bash -c \"" + " ; ".join([
-        "pushd " + paths["build"] + " > /dev/null",
+        "pushd '" + paths["build"] + "' > /dev/null",
         compile_command,
         "popd > /dev/null"
     ]) + "\"")
@@ -654,9 +646,9 @@ def main():
                 if args.deploy:
                     win_deploy(target)
             elif PLATFORM == Platform.LINUX:
-                linux_compile(compile_mode)
+                linux_compile(target, compile_mode)
             elif PLATFORM == Platform.MAC:
-                mac_compile(compile_mode)
+                mac_compile(target, compile_mode)
             else:
                 raise Exception("Unsupported platform: " + PLATFORM)
     else:
