@@ -221,7 +221,7 @@ def win_compile(target, compile_mode):
         compiler_flags = " ".join([
             compiler_flags,
             "-Od",  # no optimization
-            "-Oi",  # ...except, optimize compiler intrinsics (do I need this?)
+            "-Oi",  # ...except for compiler intrinsics
         ])
     elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
         compiler_flags = " ".join([
