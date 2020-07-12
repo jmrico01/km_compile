@@ -220,13 +220,15 @@ def win_compile(target, compile_mode):
     if compile_mode == CompileMode.DEBUG:
         compiler_flags = " ".join([
             compiler_flags,
+            "-MTd", # static link of C runtime library (multithreaded debug version)
             "-Od",  # no optimization
             "-Oi",  # ...except for compiler intrinsics
         ])
     elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
         compiler_flags = " ".join([
             compiler_flags,
-            "-Ox" # full optimization
+            "-MT", # static link of C runtime library (multithreaded release version)
+            "-Ox"  # full optimization
         ])
 
     # Add compiler warning flags
