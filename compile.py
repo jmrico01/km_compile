@@ -459,60 +459,58 @@ def linux_compile(target, compile_mode):
 def linux_run():
     os.system(paths["build"] + os.sep + app_info.PROJECT_NAME + "_linux")
 
-def mac_compile(compile_mode):
-    raise Exception("bruh... gotta fix this before using it")
+def mac_compile(target, compile_mode):
+    compiler_flags = ""
 
-    macros = " ".join([
-        "-DGAME_MACOS"
-    ])
-    if compile_mode == CompileMode.DEBUG:
-        macros = " ".join([
-            macros,
-            "-DGAME_INTERNAL=1",
-            "-DGAME_SLOW=1"
-        ])
-    elif compile_mode == CompileMode.INTERNAL:
-        macros = " ".join([
-            macros,
-            "-DGAME_INTERNAL=1",
-            "-DGAME_SLOW=0"
-        ])
-    elif compile_mode == CompileMode.RELEASE:
-        macros = " ".join([
-            macros,
-            "-DGAME_INTERNAL=0",
-            "-DGAME_SLOW=0"
-        ])
+    # Add defines/macros
+    compiler_flags = " ".join([
+        compiler_flags
+    ] + [d.to_compiler_flag() for d in get_common_defines(compile_mode)])
 
-    compilerFlags = " ".join([
-        "-std=c++11",     # use C++11 standard
-        "-lstdc++",       # link to C++ standard library
+    # Add general compiler flags
+    compiler_flags = " ".join([
+        compiler_flags,
+        "-std=c++17",     # use C++17 standard
+        "-ggdb3",         # generate level 3 (max) GDB debug info.
         "-fno-rtti",      # disable run-time type info
         "-fno-exceptions" # disable C++ exceptions (ew)
     ])
     if compile_mode == CompileMode.DEBUG:
-        compilerFlags = " ".join([
-            compilerFlags,
-            "-g" # generate debug info
+        compiler_flags = " ".join([
+            compiler_flags,
+            "-O0", # no optimization
         ])
     elif compile_mode == CompileMode.INTERNAL or compile_mode == CompileMode.RELEASE:
-        compilerFlags = " ".join([
-            compilerFlags,
-            "-O3" # full optimization
+        compiler_flags = " ".join([
+            compiler_flags,
+            "-O3", # level 3 optimizations
         ])
 
-    compilerWarningFlags = " ".join([
+    # Add compiler warning flags
+    compiler_flags = " ".join([
+        compiler_flags,
         "-Werror",  # treat warnings as errors
         "-Wall",    # enable all warnings
 
-        # disable the following warnings:
-        "-Wno-missing-braces",  # braces around initialization of subobject (?)
         "-Wno-char-subscripts", # using char as an array subscript
-        "-Wno-unused-function"
     ])
+    if compile_mode == CompileMode.DEBUG:
+        compiler_flags = " ".join([
+            compiler_flags,
+            "-Wno-unused-function"  # unused function
+        ])
 
-    includePaths = " ".join([
-        "-I" + paths["include-freetype-mac"]
+    # Add include paths
+    compiler_flags = " ".join([
+        compiler_flags,
+        "-I'" + paths["src"] + "'",
+        "-I'" + paths["libs-internal"] + "'"
+    ] + [ "-I'" + path + "'" for path in includeDirs.values() ])
+
+    # Add all custom defines + compiler flags
+    compiler_flags = " ".join([
+        compiler_flags,
+        target.get_compiler_flags()
     ])
 
     frameworks = " ".join([
@@ -521,36 +519,39 @@ def mac_compile(compile_mode):
         "-framework AudioToolbox",
         "-framework CoreMIDI"
     ])
-    linkerFlags = " ".join([
-        #"-fvisibility=hidden"
-    ])
-    libPaths = " ".join([
-        "-L" + paths["lib-freetype-mac"]
-    ])
-    libs = " ".join([
-        "-lfreetype"
+
+    linker_flags = ""
+
+    # Add general linker flags
+    linker_flags = " ".join([
+        "-fvisibility=hidden"
     ])
 
-    compileLibCommand = " ".join([
-        "clang",
-        macros, compilerFlags, compilerWarningFlags, includePaths,
-        "-dynamiclib", paths["main-cpp"],
-        "-o " + app_info.PROJECT_NAME + "_game.dylib",
-        linkerFlags, libPaths, libs
+    # Add libraries
+    linker_flags = " ".join([
+        linker_flags,
+        "-lm",
+        "-lpthread"
     ])
 
-    compileCommand = " ".join([
-        "clang", "-DGAME_PLATFORM_CODE",
-        macros, compilerFlags, compilerWarningFlags, #includePaths,
-        frameworks,
-        paths["macos-main-mm"],
-        "-o " + app_info.PROJECT_NAME + "_macos"
+    # TODO compiled libs aren't added
+
+    # Add all custom linker flags
+    linker_flags = " ".join([
+        linker_flags,
+        target.get_linker_flags()
+    ])
+
+    exe_name = target.get_output_name()
+    src_name = os.path.join(paths["root"], target.source_file)
+
+    compile_command = " ".join([
+        "clang", compiler_flags, "'" + src_name + "'", "-o " + exe_name, linker_flags
     ])
 
     os.system("bash -c \"" + " ; ".join([
-        "pushd " + paths["build"] + " > /dev/null",
-        compileLibCommand,
-        compileCommand,
+        "pushd '" + paths["build"] + "' > /dev/null",
+        compile_command,
         "popd > /dev/null"
     ]) + "\"")
 
