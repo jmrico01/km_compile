@@ -228,7 +228,7 @@ def win_compile(target, compile_mode):
         compiler_flags = " ".join([
             compiler_flags,
             "-MT", # static link of C runtime library (multithreaded release version)
-            "-Ox"  # full optimization
+            "-O2"  # full optimization
         ])
 
     # Add compiler warning flags
