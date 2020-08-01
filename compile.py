@@ -470,11 +470,10 @@ def mac_compile(target, compile_mode):
     # Add general compiler flags
     compiler_flags = " ".join([
         compiler_flags,
-        "-std=c++17",      # use C++17 standard
-        "-ggdb3",          # generate level 3 (max) GDB debug info.
-        "-fno-rtti",       # disable run-time type info
-        "-fno-exceptions", # disable C++ exceptions (ew)
-        "-stdlib=libc++"   # standard library stuff... idk
+        "-std=c++17",     # use C++17 standard
+        "-ggdb3",         # generate level 3 (max) GDB debug info.
+        "-fno-rtti",      # disable run-time type info
+        "-fno-exceptions" # disable C++ exceptions (ew)
     ])
     if compile_mode == CompileMode.DEBUG:
         compiler_flags = " ".join([
